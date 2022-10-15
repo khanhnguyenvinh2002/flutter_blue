@@ -4,10 +4,12 @@
 
 import 'dart:async';
 import 'dart:math';
+import 'dart:convert' show utf8;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_blue/flutter_blue.dart';
 import 'package:flutter_blue_example/widgets.dart';
+import 'package:flutter/services.dart';
 
 void main() {
   runApp(FlutterBlueApp());
@@ -150,7 +152,39 @@ class FindDevicesScreen extends StatelessWidget {
     );
   }
 }
+TextEditingController _textFieldController = TextEditingController();
 
+Future<void> _displayTextInputDialog(BuildContext context, BluetoothCharacteristic c) async {
+  return showDialog(
+    context: context,
+    builder: (context) {
+      return AlertDialog(
+        title: Text('Speed changing'),
+        content: TextField(
+          controller: _textFieldController,
+          keyboardType: TextInputType.number,
+          decoration: InputDecoration(hintText: "Enter the speed you want"),
+        ),
+        actions: <Widget>[
+          TextButton(
+            child: Text('CANCEL'),
+            onPressed: () {
+              Navigator.pop(context);
+            },
+          ),
+          TextButton(
+            child: Text('OK'),
+            onPressed: () async {
+              print(utf8.encode(_textFieldController.text.toString()));
+              await c.write(utf8.encode(_textFieldController.text.toString()), withoutResponse: false);
+              Navigator.pop(context);
+            },
+          ),
+        ],
+      );
+    },
+  );
+}
 class DeviceScreen extends StatelessWidget {
   const DeviceScreen({Key? key, required this.device}) : super(key: key);
 
@@ -165,8 +199,9 @@ class DeviceScreen extends StatelessWidget {
       math.nextInt(255)
     ];
   }
-
-  List<Widget> _buildServiceTiles(List<BluetoothService> services) {
+ 
+  List<Widget> _buildServiceTiles(List<BluetoothService> services, BuildContext context) {
+    print(utf8.encode(477.toString()));
     return services
         .map(
           (s) => ServiceTile(
@@ -176,10 +211,15 @@ class DeviceScreen extends StatelessWidget {
                   (c) => CharacteristicTile(
                     characteristic: c,
                     onReadPressed: () => c.read(),
-                    onWritePressed: () async {
-                      await c.write(_getRandomBytes(), withoutResponse: true);
+                    onWritePressed: () async { 
+                      await _displayTextInputDialog(context, c);
                       await c.read();
                     },
+                    // async {
+                    //   // await c.write([10], withoutResponse: true);
+                    //   await c.write([49, 48], withoutResponse: false);
+                    //   await c.read();
+                    // },
                     onNotificationPressed: () async {
                       await c.setNotifyValue(!c.isNotifying);
                       await c.read();
@@ -295,7 +335,7 @@ class DeviceScreen extends StatelessWidget {
               initialData: [],
               builder: (c, snapshot) {
                 return Column(
-                  children: _buildServiceTiles(snapshot.data!),
+                  children: _buildServiceTiles(snapshot.data!, context),
                 );
               },
             ),
@@ -304,4 +344,51 @@ class DeviceScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+class NumberInput extends StatelessWidget {
+  NumberInput({
+    required this.label,
+    this.controller,
+    this.value,
+    this.onChanged,
+    this.error,
+    this.icon,
+    this.allowDecimal = false,
+  });
+
+  final TextEditingController? controller;
+  final String? value;
+  final String label;
+  final Function? onChanged;
+  final String? error;
+  final Widget? icon;
+  final bool allowDecimal;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextFormField(
+      controller: controller,
+      initialValue: value,
+      onChanged: onChanged as void Function(String)?,
+      readOnly: false,
+      keyboardType: TextInputType.numberWithOptions(decimal: allowDecimal),
+      inputFormatters: <TextInputFormatter>[
+        FilteringTextInputFormatter.allow(RegExp(_getRegexString())),
+        TextInputFormatter.withFunction(
+          (oldValue, newValue) => newValue.copyWith(
+            text: newValue.text.replaceAll('.', ','),
+          ),
+        ),
+      ],
+      decoration: InputDecoration(
+        label: Text(label),
+        errorText: error,
+        icon: icon,
+      ),
+    );
+  }
+
+  String _getRegexString() =>
+      allowDecimal ? r'[0-9]+[,.]{0,1}[0-9]*' : r'[0-9]';
 }
